@@ -290,26 +290,152 @@ SCALAR interpolate_v(const int N, const int M, const std::vector<SCALAR> &v_vel,
 }
 
 /**
- * @brief update advection of fluid property qf
+ * @brief Advection of scalar field (like dye) using MAC grid velocity
  * @param N width
  * @param M height
- * @param vel velocity
- * @param dt time interval
+ * @param u_vel u component velocity field (size: (N+1) x M)
+ * @param v_vel v component velocity field (size: N x (M+1))
+ * @param old_field current scalar field (size: N x M)
+ * @param new_field new scalar field after advection (size: N x M)
+ * @param dt time step
+ * @param damping damping factor (typically close to 1.0)
  */
-template <typename T, typename VEC, typename SCALAR = typename VEC::Scalar>
-void advection(const int N, const int M, const std::vector<VEC> &vel, const std::vector<T> &qf,
-               std::vector<T> &new_qf, SCALAR dt, SCALAR damping = 0.9999f)
+template <typename SCALAR>
+void advection_dye(const int N, const int M,
+                   const std::vector<SCALAR> &u_vel, const std::vector<SCALAR> &v_vel,
+                   const std::vector<SCALAR> &old_field, std::vector<SCALAR> &new_field,
+                   SCALAR dt, SCALAR damping = 0.999f)
 {
+    // Advect scalar field stored at cell centers (i+0.5, j+0.5)
     for (int i = 0; i < N; i++)
-    {
         for (int j = 0; j < M; j++)
         {
-            VEC p(i + .5f, j + .5f);
-            p = backtrace<VEC>(N, M, p, dt, vel) * damping;
-
-            new_qf[IXY(i, j, N)] = bilerp<T, VEC>(N, M, qf, p);
+            // Current cell center position
+            SCALAR curr_x = static_cast<SCALAR>(i) + 0.5f;
+            SCALAR curr_y = static_cast<SCALAR>(j) + 0.5f;
+            
+            // Interpolate velocity at cell center using MAC grid
+            SCALAR u_center = 0.5f * (u_vel[IXY(i, j, N+1)] + u_vel[IXY(i+1, j, N+1)]);
+            SCALAR v_center = 0.5f * (v_vel[IXY(i, j, N)] + v_vel[IXY(i, j+1, N)]);
+            
+            // RK3 integration to find where this particle came from
+            // Stage 1
+            SCALAR x1 = curr_x - 0.5f * dt * u_center;
+            SCALAR y1 = curr_y - 0.5f * dt * v_center;
+            
+            // Clamp to grid bounds
+            x1 = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(N) - 0.5f, x1));
+            y1 = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(M) - 0.5f, y1));
+            
+            // Interpolate velocity at x1, y1
+            SCALAR u1 = interpolate_velocity_at_center<SCALAR>(N, M, u_vel, v_vel, x1, y1, 0);
+            SCALAR v1 = interpolate_velocity_at_center<SCALAR>(N, M, u_vel, v_vel, x1, y1, 1);
+            
+            // Stage 2
+            SCALAR x2 = curr_x - 0.75f * dt * u1;
+            SCALAR y2 = curr_y - 0.75f * dt * v1;
+            
+            x2 = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(N) - 0.5f, x2));
+            y2 = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(M) - 0.5f, y2));
+            
+            SCALAR u2 = interpolate_velocity_at_center<SCALAR>(N, M, u_vel, v_vel, x2, y2, 0);
+            SCALAR v2 = interpolate_velocity_at_center<SCALAR>(N, M, u_vel, v_vel, x2, y2, 1);
+            
+            // Final position
+            SCALAR back_x = curr_x - dt * ((2.0f/9.0f) * u_center + (1.0f/3.0f) * u1 + (4.0f/9.0f) * u2);
+            SCALAR back_y = curr_y - dt * ((2.0f/9.0f) * v_center + (1.0f/3.0f) * v1 + (4.0f/9.0f) * v2);
+            
+            // Clamp final position
+            back_x = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(N) - 0.5f, back_x));
+            back_y = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(M) - 0.5f, back_y));
+            
+            // Bilinear interpolation of scalar field at back-traced position
+            new_field[IXY(i, j, N)] = interpolate_scalar_field<SCALAR>(N, M, old_field, back_x, back_y) * damping;
         }
+}
+
+/**
+ * @brief Interpolate velocity at a given position using MAC grid
+ * @param N width
+ * @param M height
+ * @param u_vel u component velocity field
+ * @param v_vel v component velocity field
+ * @param x position x
+ * @param y position y
+ * @param component 0 for u, 1 for v
+ */
+template <typename SCALAR>
+SCALAR interpolate_velocity_at_center(const int N, const int M,
+                                     const std::vector<SCALAR> &u_vel, const std::vector<SCALAR> &v_vel,
+                                     SCALAR x, SCALAR y, int component)
+{
+    if (component == 0) // u component
+    {
+        // u is stored at (i, j+0.5), so we need to interpolate from face centers
+        int i = static_cast<int>(x);
+        int j = static_cast<int>(y - 0.5f);
+        SCALAR fx = x - i;
+        SCALAR fy = (y - 0.5f) - j;
+        
+        i = max<int>(0, min<int>(N, i));
+        j = max<int>(0, min<int>(M-1, j));
+        
+        SCALAR u00 = (i < N+1 && j < M) ? u_vel[IXY(i, j, N+1)] : 0.0f;
+        SCALAR u10 = (i+1 < N+1 && j < M) ? u_vel[IXY(i+1, j, N+1)] : 0.0f;
+        SCALAR u01 = (i < N+1 && j+1 < M) ? u_vel[IXY(i, j+1, N+1)] : 0.0f;
+        SCALAR u11 = (i+1 < N+1 && j+1 < M) ? u_vel[IXY(i+1, j+1, N+1)] : 0.0f;
+        
+        return (u00 * (1.0f - fx) + u10 * fx) * (1.0f - fy) + (u01 * (1.0f - fx) + u11 * fx) * fy;
     }
+    else // v component
+    {
+        // v is stored at (i+0.5, j), so we need to interpolate from face centers
+        int i = static_cast<int>(x - 0.5f);
+        int j = static_cast<int>(y);
+        SCALAR fx = (x - 0.5f) - i;
+        SCALAR fy = y - j;
+        
+        i = max<int>(0, min<int>(N-1, i));
+        j = max<int>(0, min<int>(M, j));
+        
+        SCALAR v00 = (i < N && j < M+1) ? v_vel[IXY(i, j, N)] : 0.0f;
+        SCALAR v10 = (i+1 < N && j < M+1) ? v_vel[IXY(i+1, j, N)] : 0.0f;
+        SCALAR v01 = (i < N && j+1 < M+1) ? v_vel[IXY(i, j+1, N)] : 0.0f;
+        SCALAR v11 = (i+1 < N && j+1 < M+1) ? v_vel[IXY(i+1, j+1, N)] : 0.0f;
+        
+        return (v00 * (1.0f - fx) + v10 * fx) * (1.0f - fy) + (v01 * (1.0f - fx) + v11 * fx) * fy;
+    }
+}
+
+/**
+ * @brief Bilinear interpolation of scalar field at cell centers
+ * @param N width
+ * @param M height
+ * @param field scalar field stored at cell centers
+ * @param x position x (in grid coordinates)
+ * @param y position y (in grid coordinates)
+ */
+template <typename SCALAR>
+SCALAR interpolate_scalar_field(const int N, const int M, const std::vector<SCALAR> &field, SCALAR x, SCALAR y)
+{
+    // Convert from cell center coordinates to array indices
+    SCALAR grid_x = x - 0.5f;
+    SCALAR grid_y = y - 0.5f;
+    
+    int i = static_cast<int>(grid_x);
+    int j = static_cast<int>(grid_y);
+    SCALAR fx = grid_x - i;
+    SCALAR fy = grid_y - j;
+    
+    i = max<int>(0, min<int>(N-1, i));
+    j = max<int>(0, min<int>(M-1, j));
+    
+    SCALAR f00 = (i < N && j < M) ? field[IXY(i, j, N)] : 0.0f;
+    SCALAR f10 = (i+1 < N && j < M) ? field[IXY(i+1, j, N)] : 0.0f;
+    SCALAR f01 = (i < N && j+1 < M) ? field[IXY(i, j+1, N)] : 0.0f;
+    SCALAR f11 = (i+1 < N && j+1 < M) ? field[IXY(i+1, j+1, N)] : 0.0f;
+    
+    return (f00 * (1.0f - fx) + f10 * fx) * (1.0f - fy) + (f01 * (1.0f - fx) + f11 * fx) * fy;
 }
 
 /**
@@ -321,13 +447,12 @@ void advection(const int N, const int M, const std::vector<VEC> &vel, const std:
  * @param new_u_vel new u component field after advection
  * @param new_v_vel new v component field after advection
  * @param dt time step
- * @param damping damping factor
  */
 template <typename SCALAR>
-void advection_velocity(const int N, const int M, 
+void advection_velocity(const int N, const int M,
                        const std::vector<SCALAR> &u_vel, const std::vector<SCALAR> &v_vel,
                        std::vector<SCALAR> &new_u_vel, std::vector<SCALAR> &new_v_vel,
-                       SCALAR dt, SCALAR damping = 0.9999f)
+                       SCALAR dt)
 {
     // Advect u component (stored at cell faces i+0.5, j)
     for (int i = 0; i < N + 1; i++)
@@ -347,7 +472,7 @@ void advection_velocity(const int N, const int M,
                 
                 back_x = max<SCALAR>(0.0f, min<SCALAR>(static_cast<SCALAR>(N), back_x));
                 back_y = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(M) - 0.5f, back_y));
-                new_u_vel[IXY(i, j, N + 1)] = interpolate_u<SCALAR>(N, M, u_vel, back_x, back_y) * damping;
+                new_u_vel[IXY(i, j, N + 1)] = interpolate_u<SCALAR>(N, M, u_vel, back_x, back_y);
             }
         }
     
@@ -369,13 +494,13 @@ void advection_velocity(const int N, const int M,
                 
                 back_x = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(N) - 0.5f, back_x));
                 back_y = max<SCALAR>(0.0f, min<SCALAR>(static_cast<SCALAR>(M), back_y));
-                new_v_vel[IXY(i, j, N)] = interpolate_v<SCALAR>(N, M, v_vel, back_x, back_y) * damping;
+                new_v_vel[IXY(i, j, N)] = interpolate_v<SCALAR>(N, M, v_vel, back_x, back_y);
             }
         }
 }
 
 /**
- * @brief apply global forces and damping
+ * @brief apply global forces
  * @param vel velocity field
  * @param g scale of gravity(-9.8f as default)
  * @param dt time interval
@@ -526,35 +651,6 @@ void dissipate(const int N, const int M, std::vector<SCALAR> &field, const SCALA
     {
         field[i] *= decay_factor;
     }
-}
-
-/**
- * @brief add round-shape fluid momentum at point [x,y]
- *
- * @param N width
- * @param x x-position
- * @param y y-position
- * @param r radius
- * @param dir direction of added velocity
- * @param dye color
- * @param vel velocity field
- * @param value scale of added color and velocity
- */
-template <typename VEC, typename SCALAR = typename VEC::Scalar>
-void add_source(const int N, int x, int y, int r, SCALAR value, VEC dir,
-                std::vector<SCALAR> &dye, std::vector<VEC> &vel)
-{
-    for (int i = -r; i <= r; i++)
-        for (int j = -r; j <= r; j++)
-        {
-            int index = IXY(x + i, y + j, N);
-            SCALAR smooth = smooth_step<SCALAR>(r * r, i * i + j * j);
-            smooth *= value;
-            if (index < 0 || index >= dye.size())
-                printf("Error info: index out of range {%d, %d, %d, %d, %d}\n", x, y, i, j, r);
-            dye[index] = min(smooth + dye[index], 3.0f);
-            vel[index] += dir * smooth * 100.0f;
-        }
 }
 
 #endif

@@ -23,38 +23,93 @@ FluidSimulator::~FluidSimulator()
     delete dye_pair_;
 }
 
-void FluidSimulator::InitializeFields()
+void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
+                                      const std::vector<float>* initial_v_field,
+                                      const std::vector<float>* initial_dye_field)
 {
     int u_total_cells = (params_.width + 1) * params_.height;
     int v_total_cells = params_.width * (params_.height + 1);
-    int p_total_cells = params_.width * params_.height + 1;
+    int p_total_cells = params_.width * params_.height;
     
     // Initialize u velocity component field (horizontal velocity)
     u_field_.resize(u_total_cells, 0.0f);
     u_temp_.resize(u_total_cells, 0.0f);
+    
+    // Set initial u velocity field if provided
+    if (initial_u_field != nullptr)
+    {
+        if (initial_u_field->size() == u_total_cells)
+        {
+            u_field_ = *initial_u_field;
+            std::cout << "Using custom initial u velocity field." << std::endl;
+        }
+        else
+        {
+            std::cerr << "Warning: Initial u field size mismatch. Expected " << u_total_cells 
+                      << ", got " << initial_u_field->size() << ". Using zero initialization." << std::endl;
+        }
+    }
+    
     u_pair_ = new TexPair<std::vector<float> >(u_field_, u_temp_);
     
     // Initialize v velocity component field (vertical velocity)
     v_field_.resize(v_total_cells, 0.0f);
     v_temp_.resize(v_total_cells, 0.0f);
+    
+    // Set initial v velocity field if provided
+    if (initial_v_field != nullptr)
+    {
+        if (initial_v_field->size() == v_total_cells)
+        {
+            v_field_ = *initial_v_field;
+            std::cout << "Using custom initial v velocity field." << std::endl;
+        }
+        else
+        {
+            std::cerr << "Warning: Initial v field size mismatch. Expected " << v_total_cells 
+                      << ", got " << initial_v_field->size() << ". Using zero initialization." << std::endl;
+        }
+    }
+    
     v_pair_ = new TexPair<std::vector<float> >(v_field_, v_temp_);
     
     // Initialize pressure fields
-    pressure_field_.resize(total_cells, 0.0f);
-    pressure_temp_.resize(total_cells, 0.0f);
+    pressure_field_.resize(p_total_cells, 0.0f);
+    pressure_temp_.resize(p_total_cells, 0.0f);
     pressure_pair_ = new TexPair<std::vector<float> >(pressure_field_, pressure_temp_);
     
     // Initialize dye fields
-    dye_field_.resize(total_cells, 0.0f);
-    dye_temp_.resize(total_cells, 0.0f);
+    dye_field_.resize(p_total_cells, 0.0f);
+    dye_temp_.resize(p_total_cells, 0.0f);
+    
+    // Set initial dye field if provided
+    if (initial_dye_field != nullptr)
+    {
+        if (initial_dye_field->size() == p_total_cells)
+        {
+            dye_field_ = *initial_dye_field;
+            std::cout << "Using custom initial dye field." << std::endl;
+        }
+        else
+        {
+            std::cerr << "Warning: Initial dye field size mismatch. Expected " << p_total_cells 
+                      << ", got " << initial_dye_field->size() << ". Using zero initialization." << std::endl;
+        }
+    }
+    
     dye_pair_ = new TexPair<std::vector<float> >(dye_field_, dye_temp_);
     
     // Initialize helper fields
-    divergence_field_.resize(total_cells, 0.0f);
+    divergence_field_.resize(p_total_cells, 0.0f);
 }
 
-void FluidSimulator::Initialize(const std::string& output_dir)
+void FluidSimulator::Initialize(const std::string& output_dir,
+                               const std::vector<float>* initial_u_field,
+                               const std::vector<float>* initial_v_field,
+                               const std::vector<float>* initial_dye_field)
 {
+    InitializeFields(initial_u_field, initial_v_field, initial_dye_field);
+    
     CreateOutputDirectory(output_dir);
     
     // Open output files
@@ -73,7 +128,17 @@ void FluidSimulator::Initialize(const std::string& output_dir)
     pressure_file_ << "# Pressure field data: frame time x y pressure" << std::endl;
     dye_file_ << "# Dye field data: frame time x y dye_concentration" << std::endl;
     
-    std::cout << "Fluid simulation initialized." << std::endl;
+    // Output initialization info
+    bool has_custom_fields = initial_u_field || initial_v_field || initial_dye_field;
+    if (has_custom_fields)
+    {
+        std::cout << "Fluid simulation initialized with custom initial fields." << std::endl;
+    }
+    else
+    {
+        std::cout << "Fluid simulation initialized with zero initial fields." << std::endl;
+    }
+    
     std::cout << "Grid size: " << params_.width << "x" << params_.height << std::endl;
     std::cout << "Time step: " << params_.dt << "s" << std::endl;
     std::cout << "Total time: " << params_.total_time << "s" << std::endl;
@@ -88,15 +153,14 @@ void FluidSimulator::Step()
     // 2. Advect velocity field
     AdvectVelocity();
     
-    // 3. Diffuse velocity field (viscosity)
-    DiffuseVelocity();
+    // 3. TODO: Diffuse velocity field (viscosity)
     
     // 4. Project - Solve pressure to ensure incompressibility
     SolvePressure();
     
     // Advect and diffuse dye field
     AdvectDye();
-    DiffuseDye();
+    // DiffuseDye();
     
     // Apply dissipation to dye field
     DissipateDye();
@@ -156,7 +220,7 @@ void FluidSimulator::SolvePressure()
     }
     
     // Subtract pressure gradient from velocity
-    subtract_gradient<float>(params_.width, params_.height, velocity_pair_->cur, pressure_pair_->cur);
+    subtract_gradient<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur, pressure_pair_->cur);
 }
 
 void FluidSimulator::AdvectVelocity()
@@ -164,33 +228,33 @@ void FluidSimulator::AdvectVelocity()
     advection_velocity<float>(params_.width, params_.height,
                               u_pair_->cur, u_pair_->nxt,
                               v_pair_->cur, v_pair_->nxt,
-                              params_.dt, 0.999f);
+                              params_.dt);
     u_pair_->Swap();
     v_pair_->Swap();
 }
 
 void FluidSimulator::AdvectDye()
 {
-    advection<float, Vector2f>(params_.width, params_.height, velocity_pair_->cur, 
+    advection_dye<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur,
                               dye_pair_->cur, dye_pair_->nxt, params_.dt, 0.999f);
     dye_pair_->Swap();
 }
 
-void FluidSimulator::DiffuseDye()
-{
-    if (params_.diffusion <= 0.0f) return;
+// void FluidSimulator::DiffuseDye()
+// {
+//     if (params_.diffusion <= 0.0f) return;
     
-    // Copy current dye to temp for diffusion source
-    dye_temp_ = dye_pair_->cur;
+//     // Copy current dye to temp for diffusion source
+//     dye_temp_ = dye_pair_->cur;
     
-    // Perform Gauss-Seidel iterations for dye diffusion
-    for (int iter = 0; iter < params_.pressure_iterations; ++iter)
-    {
-        diffuse_gauss_seidel<float, float>(params_.width, params_.height, 
-                                          params_.diffusion, params_.dt,
-                                          dye_temp_, dye_pair_->cur);
-    }
-}
+//     // Perform Gauss-Seidel iterations for dye diffusion
+//     for (int iter = 0; iter < params_.pressure_iterations; ++iter)
+//     {
+//         diffuse_gauss_seidel<float, float>(params_.width, params_.height, 
+//                                           params_.diffusion, params_.dt,
+//                                           dye_temp_, dye_pair_->cur);
+//     }
+// }
 
 void FluidSimulator::DissipateDye()
 {
@@ -202,7 +266,10 @@ void FluidSimulator::SaveFrameData()
 {
     if (!velocity_file_.is_open() || !pressure_file_.is_open() || !dye_file_.is_open())
         return;
-    
+
+    const std::vector<Vector2f>& velocity_field = GetVelocityField();
+    const std::vector<float>& pressure_field = pressure_pair_->cur;
+    const std::vector<float>& dye_field = dye_pair_->cur;
     for (int j = 0; j < params_.height; ++j)
     {
         for (int i = 0; i < params_.width; ++i)
@@ -212,18 +279,18 @@ void FluidSimulator::SaveFrameData()
             // Save velocity data
             velocity_file_ << current_frame_ << " " << current_time_ << " " 
                           << i << " " << j << " " 
-                          << velocity_pair_->cur[idx](0) << " " 
-                          << velocity_pair_->cur[idx](1) << std::endl;
-            
+                          << velocity_field[idx](0) << " " 
+                          << velocity_field[idx](1) << std::endl;
+
             // Save pressure data
             pressure_file_ << current_frame_ << " " << current_time_ << " " 
                           << i << " " << j << " " 
-                          << pressure_pair_->cur[idx] << std::endl;
-            
+                          << pressure_field[idx] << std::endl;
+
             // Save dye data
             dye_file_ << current_frame_ << " " << current_time_ << " " 
                        << i << " " << j << " " 
-                       << dye_pair_->cur[idx] << std::endl;
+                       << dye_field[idx] << std::endl;
         }
     }
 }
