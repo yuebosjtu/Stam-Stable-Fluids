@@ -25,30 +25,14 @@ public:
         float viscosity;              // Fluid viscosity
         float diffusion;              // Dye diffusion constant
         float dissipation;            // Dye dissipation rate
-        float vorticity_strength;     // Vorticity confinement strength
         int pressure_iterations;      // Gauss-Seidel iterations for pressure
         float total_time;             // Total simulation time
-        bool enable_vorticity;        // Enable vorticity confinement
         bool enable_gravity;          // Enable gravity
         
         // Constructor with default values
         SimulationParams() : 
             width(64), height(64), dt(0.016f), viscosity(0.0001f), diffusion(0.0001f),
-            dissipation(0.001f), vorticity_strength(0.1f), pressure_iterations(20), total_time(10.0f),
-            enable_vorticity(true), enable_gravity(true) {}
-    };
-
-    struct SourceEvent
-    {
-        float time;              // Time to add source
-        int x, y;               // Position
-        int radius;             // Source radius
-        Vector2f direction;     // Velocity direction
-        float strength;         // Source strength
-        float dye_amount;       // Amount of dye to add
-        
-        SourceEvent(float t, int px, int py, int r, Vector2f dir, float s, float dye = 1.0f)
-            : time(t), x(px), y(py), radius(r), direction(dir), strength(s), dye_amount(dye) {}
+            dissipation(0.001f), pressure_iterations(80), total_time(10.0f), enable_gravity(true) {}
     };
 
 private:
@@ -56,25 +40,24 @@ private:
     float current_time_;
     int current_frame_;
     
-    // Fluid fields
-    std::vector<Vector2f> velocity_field_;
-    std::vector<Vector2f> velocity_temp_;
+    // Velocity components fields
+    std::vector<Vector2f> u_field_;
+    std::vector<Vector2f> u_temp_;
+    std::vector<Vector2f> v_field_;
+    std::vector<Vector2f> v_temp_;
+
+    // Scalar fields stored at cell centers 
     std::vector<float> pressure_field_;
     std::vector<float> pressure_temp_;
     std::vector<float> dye_field_;
     std::vector<float> dye_temp_;
     std::vector<float> divergence_field_;
-    std::vector<float> curl_field_;
-    std::vector<Vector2f> curl_force_;
     
     // TexPair wrappers for easy swapping
-    TexPair<std::vector<Vector2f> >* velocity_pair_;
+    TexPair<std::vector<Vector2f> >* u_pair_;
+    TexPair<std::vector<Vector2f> >* v_pair_;
     TexPair<std::vector<float> >* pressure_pair_;
     TexPair<std::vector<float> >* dye_pair_;
-    
-    // Source events
-    std::vector<SourceEvent> source_events_;
-    size_t next_source_index_;
     
     // Output files for saving data
     std::ofstream velocity_file_;
@@ -141,11 +124,6 @@ private:
     void ApplyForces();
     
     /**
-     * @brief Apply vorticity confinement
-     */
-    void ApplyVorticityConfinement();
-    
-    /**
      * @brief Solve for pressure to make velocity field divergence-free
      */
     void SolvePressure();
@@ -161,11 +139,6 @@ private:
     void AdvectDye();
     
     /**
-     * @brief Diffuse velocity field
-     */
-    void DiffuseVelocity();
-    
-    /**
      * @brief Diffuse dye field
      */
     void DiffuseDye();
@@ -174,11 +147,6 @@ private:
      * @brief Dissipate (decay) dye field
      */
     void DissipateDye();
-    
-    /**
-     * @brief Process source events at current time
-     */
-    void ProcessSources();
     
     /**
      * @brief Save current frame data to files

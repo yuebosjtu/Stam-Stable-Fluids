@@ -15,30 +15,14 @@ int main()
     params.viscosity = 0.0001f;
     params.diffusion = 0.0005f;           // Diffusion Constant
     params.dissipation = 0.001f;          // Dye dissipation rate
-    params.vorticity_strength = 0.2f;
     params.pressure_iterations = 30;
-    params.enable_vorticity = false;
-    params.enable_gravity = true;        // Disable gravity for this demo
+    params.enable_gravity = true;
     
     // Create fluid simulator
     FluidSimulator simulator(params);
     
     // Initialize the simulation
     simulator.Initialize("fluid_output");
-    
-    // Add some example source events
-    Eigen::Vector2f right_dir(1.0f, 0.0f);
-    Eigen::Vector2f up_dir(0.0f, 1.0f);
-    Eigen::Vector2f diagonal_dir(0.707f, 0.707f);
-    
-    // Add sources at different times and locations
-    simulator.AddSourceEvent(0.5f, 32, 64, 10, right_dir, 60.0f, 2.0f);        // Initial horizontal jet from left
-    simulator.AddSourceEvent(1.5f, 96, 64, 8, -right_dir, 50.0f, 1.8f);        // Counter-flow from right
-    simulator.AddSourceEvent(2.5f, 64, 32, 8, up_dir, 45.0f, 2.2f);            // Upward flow from bottom
-    simulator.AddSourceEvent(3.5f, 64, 64, 12, Eigen::Vector2f::Zero(), 0.0f, 3.0f); // Pure dye injection at center
-    simulator.AddSourceEvent(4.0f, 48, 80, 6, diagonal_dir, 35.0f, 1.5f);      // Final diagonal push
-    
-    std::cout << "Added " << 5 << " source events to the simulation." << std::endl;
     
     // Record start time for performance measurement
     auto start_time = std::chrono::high_resolution_clock::now();

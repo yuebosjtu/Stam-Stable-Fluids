@@ -5,7 +5,7 @@
 #include <direct.h>  // For _mkdir on Windows
 
 FluidSimulator::FluidSimulator(const SimulationParams& params)
-    : params_(params), current_time_(0.0f), current_frame_(0), next_source_index_(0)
+    : params_(params), current_time_(0.0f), current_frame_(0)
 {
     InitializeFields();
 }
@@ -17,19 +17,27 @@ FluidSimulator::~FluidSimulator()
     if (dye_file_.is_open()) dye_file_.close();
     
     // Clean up allocated memory
-    delete velocity_pair_;
+    delete u_pair_;
+    delete v_pair_;
     delete pressure_pair_;
     delete dye_pair_;
 }
 
 void FluidSimulator::InitializeFields()
 {
-    int total_cells = params_.width * params_.height;
+    int u_total_cells = (params_.width + 1) * params_.height;
+    int v_total_cells = params_.width * (params_.height + 1);
+    int p_total_cells = params_.width * params_.height + 1;
     
-    // Initialize velocity fields
-    velocity_field_.resize(total_cells, Vector2f::Zero());
-    velocity_temp_.resize(total_cells, Vector2f::Zero());
-    velocity_pair_ = new TexPair<std::vector<Vector2f> >(velocity_field_, velocity_temp_);
+    // Initialize u velocity component field (horizontal velocity)
+    u_field_.resize(u_total_cells, 0.0f);
+    u_temp_.resize(u_total_cells, 0.0f);
+    u_pair_ = new TexPair<std::vector<float> >(u_field_, u_temp_);
+    
+    // Initialize v velocity component field (vertical velocity)
+    v_field_.resize(v_total_cells, 0.0f);
+    v_temp_.resize(v_total_cells, 0.0f);
+    v_pair_ = new TexPair<std::vector<float> >(v_field_, v_temp_);
     
     // Initialize pressure fields
     pressure_field_.resize(total_cells, 0.0f);
@@ -43,8 +51,6 @@ void FluidSimulator::InitializeFields()
     
     // Initialize helper fields
     divergence_field_.resize(total_cells, 0.0f);
-    curl_field_.resize(total_cells, 0.0f);
-    curl_force_.resize(total_cells, Vector2f::Zero());
 }
 
 void FluidSimulator::Initialize(const std::string& output_dir)
@@ -79,9 +85,6 @@ void FluidSimulator::Step()
     // 1. Apply external forces (gravity, user input, etc.)
     ApplyForces();
     
-    // Process any source events at current time
-    ProcessSources();
-    
     // 2. Advect velocity field
     AdvectVelocity();
     
@@ -90,12 +93,6 @@ void FluidSimulator::Step()
     
     // 4. Project - Solve pressure to ensure incompressibility
     SolvePressure();
-    
-    // Apply vorticity confinement if enabled (after pressure projection)
-    if (params_.enable_vorticity)
-    {
-        ApplyVorticityConfinement();
-    }
     
     // Advect and diffuse dye field
     AdvectDye();
@@ -134,45 +131,18 @@ void FluidSimulator::RunSimulation()
     std::cout << "Final time: " << current_time_ << "s" << std::endl;
 }
 
-void FluidSimulator::AddSourceEvent(float time, int x, int y, int radius, 
-                                   const Vector2f& direction, float strength, float dye_amount)
-{
-    source_events_.push_back(SourceEvent(time, x, y, radius, direction, strength, dye_amount));
-    
-    // Keep source events sorted by time (simple bubble sort for compatibility)
-    for (size_t i = 0; i < source_events_.size(); ++i) {
-        for (size_t j = 0; j < source_events_.size() - 1 - i; ++j) {
-            if (source_events_[j].time > source_events_[j + 1].time) {
-                SourceEvent temp = source_events_[j];
-                source_events_[j] = source_events_[j + 1];
-                source_events_[j + 1] = temp;
-            }
-        }
-    }
-}
-
 void FluidSimulator::ApplyForces()
 {
     if (params_.enable_gravity)
     {
-        apply_force<Vector2f>(params_.width, params_.height, velocity_pair_->cur, -9.8f, params_.dt);
+        apply_force<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur, -9.8f, params_.dt);
     }
-}
-
-void FluidSimulator::ApplyVorticityConfinement()
-{
-    // Calculate curl of velocity field
-    get_curl<Vector2f>(params_.width, params_.height, velocity_pair_->cur, curl_field_);
-    
-    // Apply vorticity confinement force
-    vorticity_confinement<Vector2f>(params_.width, params_.height, velocity_pair_->cur, 
-                                   curl_field_, curl_force_, params_.vorticity_strength, params_.dt);
 }
 
 void FluidSimulator::SolvePressure()
 {
     // Calculate divergence of velocity field
-    get_divergence<Vector2f>(params_.width, params_.height, velocity_pair_->cur, divergence_field_);
+    get_divergence<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur, divergence_field_);
     
     // Clear pressure field
     std::fill(pressure_pair_->cur.begin(), pressure_pair_->cur.end(), 0.0f);
@@ -186,14 +156,17 @@ void FluidSimulator::SolvePressure()
     }
     
     // Subtract pressure gradient from velocity
-    subtract_gradient<Vector2f>(params_.width, params_.height, velocity_pair_->cur, pressure_pair_->cur);
+    subtract_gradient<float>(params_.width, params_.height, velocity_pair_->cur, pressure_pair_->cur);
 }
 
 void FluidSimulator::AdvectVelocity()
 {
-    advection_velocity<Vector2f>(params_.width, params_.height, velocity_pair_->cur, 
-                                velocity_pair_->nxt, params_.dt, 0.999f);
-    velocity_pair_->Swap();
+    advection_velocity<float>(params_.width, params_.height,
+                              u_pair_->cur, u_pair_->nxt,
+                              v_pair_->cur, v_pair_->nxt,
+                              params_.dt, 0.999f);
+    u_pair_->Swap();
+    v_pair_->Swap();
 }
 
 void FluidSimulator::AdvectDye()
@@ -201,22 +174,6 @@ void FluidSimulator::AdvectDye()
     advection<float, Vector2f>(params_.width, params_.height, velocity_pair_->cur, 
                               dye_pair_->cur, dye_pair_->nxt, params_.dt, 0.999f);
     dye_pair_->Swap();
-}
-
-void FluidSimulator::DiffuseVelocity()
-{
-    if (params_.viscosity <= 0.0f) return;
-    
-    // Copy current velocity to temp for diffusion source
-    velocity_temp_ = velocity_pair_->cur;
-    
-    // Perform Gauss-Seidel iterations for viscosity diffusion
-    for (int iter = 0; iter < params_.pressure_iterations; ++iter)
-    {
-        diffuse_gauss_seidel<Vector2f, float>(params_.width, params_.height, 
-                                             params_.viscosity, params_.dt,
-                                             velocity_temp_, velocity_pair_->cur);
-    }
 }
 
 void FluidSimulator::DiffuseDye()
@@ -239,31 +196,6 @@ void FluidSimulator::DissipateDye()
 {
     // Apply dissipation (decay) to dye field
     dissipate<float>(params_.width, params_.height, dye_pair_->cur, params_.dissipation, params_.dt);
-}
-
-void FluidSimulator::ProcessSources()
-{
-    while (next_source_index_ < source_events_.size() && 
-           source_events_[next_source_index_].time <= current_time_)
-    {
-        const SourceEvent& event = source_events_[next_source_index_];
-        
-        // Check bounds
-        if (event.x >= 0 && event.x < params_.width && 
-            event.y >= 0 && event.y < params_.height)
-        {
-            Vector2f normalized_dir = event.direction.normalized();
-            Vector2f scaled_velocity = normalized_dir * event.strength;
-            add_source<Vector2f>(params_.width, event.x, event.y, event.radius, 
-                               event.dye_amount, scaled_velocity,
-                               dye_pair_->cur, velocity_pair_->cur);
-            
-            std::cout << "Applied source at frame " << current_frame_ 
-                      << ", position (" << event.x << ", " << event.y << ")" << std::endl;
-        }
-        
-        next_source_index_++;
-    }
 }
 
 void FluidSimulator::SaveFrameData()
