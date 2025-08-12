@@ -45,8 +45,7 @@ void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
         }
         else
         {
-            std::cerr << "Warning: Initial u field size mismatch. Expected " << u_total_cells 
-                      << ", got " << initial_u_field->size() << ". Using zero initialization." << std::endl;
+            std::cerr << "Warning: Initial u field size mismatch. Using zero initialization." << std::endl;
         }
     }
     
@@ -66,8 +65,7 @@ void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
         }
         else
         {
-            std::cerr << "Warning: Initial v field size mismatch. Expected " << v_total_cells 
-                      << ", got " << initial_v_field->size() << ". Using zero initialization." << std::endl;
+            std::cerr << "Warning: Initial v field size mismatch. Using zero initialization." << std::endl;
         }
     }
     
@@ -92,14 +90,12 @@ void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
         }
         else
         {
-            std::cerr << "Warning: Initial dye field size mismatch. Expected " << p_total_cells 
-                      << ", got " << initial_dye_field->size() << ". Using zero initialization." << std::endl;
+            std::cerr << "Warning: Initial dye field size mismatch. Using zero initialization." << std::endl;
         }
     }
     
     dye_pair_ = new TexPair<std::vector<float> >(dye_field_, dye_temp_);
     
-    // Initialize helper fields
     divergence_field_.resize(p_total_cells, 0.0f);
 }
 
@@ -117,27 +113,10 @@ void FluidSimulator::Initialize(const std::string& output_dir,
     pressure_file_.open((output_dir + "/pressure_data.txt").c_str());
     dye_file_.open((output_dir + "/dye_data.txt").c_str());
     
-    if (!velocity_file_.is_open() || !pressure_file_.is_open() || !dye_file_.is_open())
-    {
-        std::cerr << "Error: Failed to open output files!" << std::endl;
-        return;
-    }
-    
     // Write headers
     velocity_file_ << "# Velocity field data: frame time x y vel_x vel_y" << std::endl;
     pressure_file_ << "# Pressure field data: frame time x y pressure" << std::endl;
     dye_file_ << "# Dye field data: frame time x y dye_concentration" << std::endl;
-    
-    // Output initialization info
-    bool has_custom_fields = initial_u_field || initial_v_field || initial_dye_field;
-    if (has_custom_fields)
-    {
-        std::cout << "Fluid simulation initialized with custom initial fields." << std::endl;
-    }
-    else
-    {
-        std::cout << "Fluid simulation initialized with zero initial fields." << std::endl;
-    }
     
     std::cout << "Grid size: " << params_.width << "x" << params_.height << std::endl;
     std::cout << "Time step: " << params_.dt << "s" << std::endl;
@@ -164,6 +143,10 @@ void FluidSimulator::Step()
     
     // Apply dissipation to dye field
     DissipateDye();
+    
+    // 5. Apply boundary conditions and inside source constraints
+    ApplyBoundaryConditions();
+    // ApplyInsideSource();
     
     // Save frame data
     SaveFrameData();
@@ -236,7 +219,7 @@ void FluidSimulator::AdvectVelocity()
 void FluidSimulator::AdvectDye()
 {
     advection_dye<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur,
-                              dye_pair_->cur, dye_pair_->nxt, params_.dt, 0.999f);
+                              dye_pair_->cur, dye_pair_->nxt, params_.dt);
     dye_pair_->Swap();
 }
 
@@ -299,4 +282,99 @@ void FluidSimulator::CreateOutputDirectory(const std::string& dir)
 {
     _mkdir(dir.c_str());
     std::cout << "Output directory: " << dir << std::endl;
+}
+
+void FluidSimulator::CreateCircularSourceField(std::vector<float>& u_field, std::vector<float>& v_field) const
+{
+    int u_total_cells = (params_.width + 1) * params_.height;
+    int v_total_cells = params_.width * (params_.height + 1);
+    
+    u_field.resize(u_total_cells, 0.0f);
+    v_field.resize(v_total_cells, 0.0f);
+    
+    // Set v velocity in circular region (upward flow)
+    for (int i = 0; i < params_.width; ++i)
+    {
+        for (int j = 0; j < params_.height + 1; ++j)
+        {
+            // v component is stored at (i+0.5, j)
+            float x = static_cast<float>(i) + 0.5f;
+            float y = static_cast<float>(j);
+            
+            float dx = x - params_.source_center_x;
+            float dy = y - params_.source_center_y;
+            float distance = std::sqrt(dx*dx + dy*dy);
+            
+            if (distance <= params_.source_radius)
+            {
+                v_field[IXY(i, j, params_.width)] = params_.source_velocity;
+            }
+        }
+    }
+    
+    std::cout << "Created circular source field at (" << params_.source_center_x << ", " 
+              << params_.source_center_y << ") with radius " << params_.source_radius 
+              << " and velocity " << params_.source_velocity << std::endl;
+}
+
+void FluidSimulator::ApplyBoundaryConditions()
+{
+    // Apply no-slip boundary conditions
+    
+    // Left and right boundaries for u component
+    for (int j = 0; j < params_.height; ++j)
+    {
+        u_pair_->cur[IXY(0, j, params_.width + 1)] = 0.0f;  // Left boundary
+        u_pair_->cur[IXY(params_.width, j, params_.width + 1)] = 0.0f;  // Right boundary
+    }
+    
+    // Top and bottom boundaries for v component
+    for (int i = 0; i < params_.width; ++i)
+    {
+        v_pair_->cur[IXY(i, 0, params_.width)] = 0.0f;  // Bottom boundary
+        v_pair_->cur[IXY(i, params_.height, params_.width)] = 0.0f;  // Top boundary
+    }
+}
+
+void FluidSimulator::ApplyInsideSource()
+{
+    // Apply constant velocity inside the circular source region
+    
+    for (int i = 0; i < params_.width + 1; ++i)
+    {
+        for (int j = 0; j < params_.height; ++j)
+        {
+            // u component is stored at (i, j+0.5)
+            float x = static_cast<float>(i);
+            float y = static_cast<float>(j) + 0.5f;
+            
+            float dx = x - params_.source_center_x;
+            float dy = y - params_.source_center_y;
+            float distance = std::sqrt(dx*dx + dy*dy);
+            
+            if (distance <= params_.source_radius)
+            {
+                u_pair_->cur[IXY(i, j, params_.width + 1)] = 0.0f;  // No horizontal flow
+            }
+        }
+    }
+    
+    for (int i = 0; i < params_.width; ++i)
+    {
+        for (int j = 0; j < params_.height + 1; ++j)
+        {
+            // v component is stored at (i+0.5, j)
+            float x = static_cast<float>(i) + 0.5f;
+            float y = static_cast<float>(j);
+            
+            float dx = x - params_.source_center_x;
+            float dy = y - params_.source_center_y;
+            float distance = std::sqrt(dx*dx + dy*dy);
+            
+            if (distance <= params_.source_radius)
+            {
+                v_pair_->cur[IXY(i, j, params_.width)] = params_.source_velocity;
+            }
+        }
+    }
 }

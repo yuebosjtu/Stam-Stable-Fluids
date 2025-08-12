@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\Lab_work\Fluid Simulation\Stam-Stable-Fluids\build\CMakeFiles\0e2537dad716b0e1955c00796ea174e8\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{672245D8-9FB3-3FD9-834E-6EB67F3D2725}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

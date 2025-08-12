@@ -298,13 +298,12 @@ SCALAR interpolate_v(const int N, const int M, const std::vector<SCALAR> &v_vel,
  * @param old_field current scalar field (size: N x M)
  * @param new_field new scalar field after advection (size: N x M)
  * @param dt time step
- * @param damping damping factor (typically close to 1.0)
  */
 template <typename SCALAR>
 void advection_dye(const int N, const int M,
                    const std::vector<SCALAR> &u_vel, const std::vector<SCALAR> &v_vel,
                    const std::vector<SCALAR> &old_field, std::vector<SCALAR> &new_field,
-                   SCALAR dt, SCALAR damping = 0.999f)
+                   SCALAR dt)
 {
     // Advect scalar field stored at cell centers (i+0.5, j+0.5)
     for (int i = 0; i < N; i++)
@@ -350,7 +349,7 @@ void advection_dye(const int N, const int M,
             back_y = max<SCALAR>(0.5f, min<SCALAR>(static_cast<SCALAR>(M) - 0.5f, back_y));
             
             // Bilinear interpolation of scalar field at back-traced position
-            new_field[IXY(i, j, N)] = interpolate_scalar_field<SCALAR>(N, M, old_field, back_x, back_y) * damping;
+            new_field[IXY(i, j, N)] = interpolate_scalar_field<SCALAR>(N, M, old_field, back_x, back_y);
         }
 }
 
@@ -603,8 +602,8 @@ template <typename SCALAR>
 void subtract_gradient(const int N, const int M, std::vector<SCALAR> &u_vel, 
                       std::vector<SCALAR> &v_vel, const std::vector<SCALAR> &pressure)
 {
-    // Update u component: u[i,j] -= (pressure[i,j] - pressure[i-1,j])
-    for (int i = 1; i < N; i++)  // Start from 1, skip boundary at i=0
+    // Update u component
+    for (int i = 1; i < N; i++)
         for (int j = 0; j < M; j++)
         {
             SCALAR p_right = pressure[IXY(i, j, N)];
@@ -612,9 +611,9 @@ void subtract_gradient(const int N, const int M, std::vector<SCALAR> &u_vel,
             u_vel[IXY(i, j, N+1)] -= (p_right - p_left);
         }
     
-    // Update v component: v[i,j] -= (pressure[i,j] - pressure[i,j-1])
+    // Update v component
     for (int i = 0; i < N; i++)
-        for (int j = 1; j < M; j++)  // Start from 1, skip boundary at j=0
+        for (int j = 1; j < M; j++)
         {
             SCALAR p_top = pressure[IXY(i, j, N)];
             SCALAR p_bottom = pressure[IXY(i, j-1, N)];

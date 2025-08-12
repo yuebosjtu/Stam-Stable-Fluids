@@ -29,10 +29,17 @@ public:
         float total_time;             // Total simulation time
         bool enable_gravity;          // Enable gravity
         
+        // Circle source parameters
+        float source_center_x;        // Circle center x coordinate
+        float source_center_y;        // Circle center y coordinate
+        float source_radius;          // Circle radius
+        float source_velocity;        // Velocity magnitude inside circle
+        
         // Constructor with default values
         SimulationParams() : 
             width(64), height(64), dt(0.016f), viscosity(0.0001f), diffusion(0.0001f),
-            dissipation(0.001f), pressure_iterations(80), total_time(10.0f), enable_gravity(true) {}
+            dissipation(0.001f), pressure_iterations(80), total_time(10.0f), enable_gravity(true),
+            source_center_x(32.0f), source_center_y(16.0f), source_radius(8.0f), source_velocity(5.0f) {}
     };
 
 private:
@@ -90,6 +97,13 @@ public:
      * @brief Run the complete simulation
      */
     void RunSimulation();
+    
+    /**
+     * @brief Create initial velocity field with circular source
+     * @param u_field Output u velocity field (will be resized)
+     * @param v_field Output v velocity field (will be resized)
+     */
+    void CreateCircularSourceField(std::vector<float>& u_field, std::vector<float>& v_field) const;
     
     float GetCurrentTime() const { return current_time_; }
     
@@ -152,20 +166,25 @@ private:
     void ApplyForces();
     
     /**
-     * @brief Solve for pressure to make velocity field divergence-free
-     */
-    void SolvePressure();
-    
-    /**
      * @brief Advect velocity field
      */
     void AdvectVelocity();
     
     /**
+     * @brief Solve for pressure to make velocity field divergence-free
+     */
+    void SolvePressure();
+
+    /**
      * @brief Advect dye field
      */
     void AdvectDye();
     
+    /**
+     * @brief Diffuse velocity field
+     */
+    // void DiffuseVelocity();
+
     /**
      * @brief Diffuse dye field
      */
@@ -175,6 +194,16 @@ private:
      * @brief Dissipate (decay) dye field
      */
     void DissipateDye();
+    
+    /**
+     * @brief Apply boundary conditions (no-slip walls)
+     */
+    void ApplyBoundaryConditions();
+    
+    /**
+     * @brief Apply inside source conditions (constant velocity in circle)
+     */
+    void ApplyInsideSource();
     
     /**
      * @brief Save current frame data to files
