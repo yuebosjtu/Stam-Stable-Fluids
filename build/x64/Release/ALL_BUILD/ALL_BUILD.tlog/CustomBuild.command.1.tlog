@@ -1,0 +1,10 @@
+^D:\LAB_WORK\FLUID SIMULATION\STAM-STABLE-FLUIDS\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Lab_work/Fluid Simulation/Stam-Stable-Fluids" "-BD:/Lab_work/Fluid Simulation/Stam-Stable-Fluids/build" --check-stamp-file "D:/Lab_work/Fluid Simulation/Stam-Stable-Fluids/build/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

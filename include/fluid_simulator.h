@@ -2,6 +2,7 @@
 #define FLUID_SIMULATOR_H
 
 #include "stable_fluid.h"
+#include "amg_solver.h"
 #include <Eigen/Dense>
 #include <string>
 #include <fstream>
@@ -65,6 +66,14 @@ private:
     TexPair<std::vector<float> >* v_pair_;
     TexPair<std::vector<float> >* pressure_pair_;
     TexPair<std::vector<float> >* dye_pair_;
+    
+    // AMG Solver data structures
+    FixedSparseMatrix<float>* poisson_matrix_;
+    std::vector<FixedSparseMatrix<float>*> A_L_;
+    std::vector<FixedSparseMatrix<float>*> R_L_;
+    std::vector<FixedSparseMatrix<float>*> P_L_;
+    std::vector<Vec2i> S_L_;
+    bool amg_initialized_;
     
     // Output files for saving data
     std::ofstream velocity_file_;
@@ -164,6 +173,11 @@ private:
      * @brief Apply external forces (gravity, user input, etc.)
      */
     void ApplyForces();
+    
+    /**
+     * @brief Initialize AMG solver for pressure solve
+     */
+    void InitializeAMGSolver();
     
     /**
      * @brief Advect velocity field

@@ -5,7 +5,8 @@
 #include <direct.h>  // For _mkdir on Windows
 
 FluidSimulator::FluidSimulator(const SimulationParams& params)
-    : params_(params), current_time_(0.0f), current_frame_(0)
+    : params_(params), current_time_(0.0f), current_frame_(0), 
+      poisson_matrix_(nullptr), amg_initialized_(false)
 {
     InitializeFields();
 }
@@ -20,6 +21,11 @@ FluidSimulator::~FluidSimulator()
     delete v_pair_;
     delete pressure_pair_;
     delete dye_pair_;
+    
+    delete poisson_matrix_;
+    for (auto* matrix : A_L_) delete matrix;
+    for (auto* matrix : R_L_) delete matrix;
+    for (auto* matrix : P_L_) delete matrix;
 }
 
 void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
@@ -185,20 +191,74 @@ void FluidSimulator::ApplyForces()
     }
 }
 
+void FluidSimulator::InitializeAMGSolver()
+{
+    if (amg_initialized_) return;
+    
+    // Create Poisson matrix for pressure solve
+    int n = params_.width * params_.height;
+    poisson_matrix_ = new FixedSparseMatrix<float>(n, n);
+    setupPoissonMatrix2D(*poisson_matrix_, params_.width, params_.height);
+    
+    // Initialize AMG hierarchy (simplified - just allocate placeholders)
+    A_L_.clear();
+    R_L_.clear();
+    P_L_.clear();
+    S_L_.clear();
+    
+    // For now, just use the original matrix as the only level
+    A_L_.push_back(poisson_matrix_);
+    S_L_.push_back(Vec2i(params_.width, params_.height));
+    
+    amg_initialized_ = true;
+}
+
 void FluidSimulator::SolvePressure()
 {
+    // Initialize AMG solver if not already done
+    if (!amg_initialized_) {
+        InitializeAMGSolver();
+    }
+    
     // Calculate divergence of velocity field
     get_divergence<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur, divergence_field_);
     
     // Clear pressure field
     std::fill(pressure_pair_->cur.begin(), pressure_pair_->cur.end(), 0.0f);
     
-    // Solve pressure using Gauss-Seidel iterations
-    for (int iter = 0; iter < params_.pressure_iterations; ++iter)
-    {
-        pressure_gauss_sidel<Vector2f>(params_.width, params_.height, divergence_field_, 
-                                      pressure_pair_->cur, pressure_pair_->nxt);
-        pressure_pair_->Swap();
+    // Solve pressure using AMG PCG solver
+    float residual_out;
+    int iterations_out;
+    float tolerance = 1e-6f;
+    int max_iterations = params_.pressure_iterations;
+    
+    // Copy divergence to RHS
+    std::vector<float> rhs = divergence_field_;
+    for (auto& val : rhs) {
+        val = -val;
+    }
+    
+    bool converged = AMGPCGSolvePrebuilt2D<float>(
+        *poisson_matrix_,                   // System matrix
+        rhs,                                // Right-hand side
+        pressure_pair_->cur,                // Solution vector (pressure field)
+        A_L_,                               // AMG level matrices
+        R_L_,                               // Restriction matrices
+        P_L_,                               // Prolongation matrices
+        S_L_,                               // Grid sizes for each level
+        1,                                  // Total AMG levels
+        tolerance,                          // Tolerance factor
+        max_iterations,                     // Maximum iterations
+        residual_out,                       // Output residual
+        iterations_out,                     // Output iteration count
+        params_.width,                      // Grid width
+        params_.height,                     // Grid height
+        false                               // Not pure Neumann
+    );
+    
+    if (!converged) {
+        std::cout << "Warning: Pressure solver did not converge. Residual: " << residual_out 
+                  << ", Iterations: " << iterations_out << std::endl;
     }
     
     // Subtract pressure gradient from velocity
