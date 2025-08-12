@@ -5,7 +5,7 @@
 #include <direct.h>  // For _mkdir on Windows
 
 FluidSimulator::FluidSimulator(const SimulationParams& params)
-    : params_(params), current_time_(0.0f), current_frame_(0), 
+    : params_(params), current_time_(0.0f), save_frame_(0), current_frame_(0), 
       poisson_matrix_(nullptr), amg_initialized_(false)
 {
     InitializeFields();
@@ -105,6 +105,7 @@ void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
 }
 
 void FluidSimulator::Initialize(const std::string& output_dir,
+                                const std::string& image_dir,
                                const std::vector<float>* initial_u_field,
                                const std::vector<float>* initial_v_field,
                                const std::vector<float>* initial_dye_field)
@@ -113,7 +114,9 @@ void FluidSimulator::Initialize(const std::string& output_dir,
     
     // Create output directory
     _mkdir(output_dir.c_str());
+    _mkdir(image_dir.c_str());
     std::cout << "Output directory: " << output_dir << std::endl;
+    std::cout << "image directory: " << image_dir << std::endl;
     
     // Open output files
     velocity_file_.open((output_dir + "/velocity_data.txt").c_str());
@@ -131,7 +134,7 @@ void FluidSimulator::Initialize(const std::string& output_dir,
     std::cout << "Output directory: " << output_dir << std::endl;
 }
 
-void FluidSimulator::Step()
+void FluidSimulator::Step(const std::string& image_dir = "image_file")
 {
     // 1. Apply external forces (gravity, user input, etc.)
     ApplyForces();
@@ -162,7 +165,7 @@ void FluidSimulator::Step()
     // Progress output
     if (current_frame_ % 10 == 0)
     {
-        SaveFrameData();
+        SaveFrameData(image_dir);
         std::cout << "Frame " << save_frame_ 
                   << ", Time: " << std::fixed << std::setprecision(2) << current_time_ 
                   << "s" << std::endl;
@@ -170,13 +173,13 @@ void FluidSimulator::Step()
     }
 }
 
-void FluidSimulator::RunSimulation()
+void FluidSimulator::RunSimulation(const std::string& image_dir = "image_file")
 {
     std::cout << "Starting fluid simulation..." << std::endl;
     
     while (!IsComplete())
     {
-        Step();
+        Step(image_dir);
     }
     
     std::cout << "Simulation completed!" << std::endl;
@@ -304,7 +307,7 @@ void FluidSimulator::DissipateDye()
     dissipate<float>(params_.width, params_.height, dye_pair_->cur, params_.dissipation, params_.dt);
 }
 
-void FluidSimulator::SaveFrameData()
+void FluidSimulator::SaveFrameData(const std::string& image_dir = "image_file")
 {
     if (!velocity_file_.is_open() || !pressure_file_.is_open() || !dye_file_.is_open())
         return;

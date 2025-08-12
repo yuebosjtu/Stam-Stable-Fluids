@@ -31,11 +31,14 @@ int main()
         params.source_radius, params.source_velocity,
         initial_u_field, initial_v_field);
 
+    std::string output_dir = "fluid_output";
+    std::string img_dir = "velocity_field";
+
     // Initialize simulation with custom fields
-    simulator.Initialize("fluid_output", &initial_u_field, &initial_v_field, nullptr);
+    simulator.Initialize(output_dir, img_dir, &initial_u_field, &initial_v_field, nullptr);
 
     // Run simulation
-    simulator.RunSimulation();
+    simulator.RunSimulation(img_dir);
 
     std::cout << "\n=== Simulation completed! ===" << std::endl;
     std::cout << "The simulation shows:" << std::endl;

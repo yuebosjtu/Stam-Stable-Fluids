@@ -46,7 +46,7 @@ public:
 private:
     SimulationParams params_;
     float current_time_;
-    int save_frame_=0;
+    int save_frame_;
     int current_frame_;
     
     // Velocity components fields
@@ -94,6 +94,7 @@ public:
      * @param initial_dye_field Optional initial dye field (size: width x height)
      */
     void Initialize(const std::string& output_dir = "output",
+                    const std::string& image_dir = "image_file",
                    const std::vector<float>* initial_u_field = nullptr,
                    const std::vector<float>* initial_v_field = nullptr,
                    const std::vector<float>* initial_dye_field = nullptr);
@@ -101,12 +102,12 @@ public:
     /**
      * @brief Run one simulation step
      */
-    void Step();
+    void Step(const std::string& img_dir = "image_file");
     
     /**
      * @brief Run the complete simulation
      */
-    void RunSimulation();
+    void RunSimulation(const std::string& img_dir = "image_file");
     
     /**
      * @brief Create initial velocity field with circular source
@@ -162,7 +163,7 @@ public:
     /**
      * @brief Save current frame data to files
      */
-    void SaveFrameData();
+    void SaveFrameData(img_dir = "image_file");
 
 private:
     /**
