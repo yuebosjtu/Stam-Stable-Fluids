@@ -16,7 +16,6 @@ FluidSimulator::~FluidSimulator()
     if (pressure_file_.is_open()) pressure_file_.close();
     if (dye_file_.is_open()) dye_file_.close();
     
-    // Clean up allocated memory
     delete u_pair_;
     delete v_pair_;
     delete pressure_pair_;
@@ -31,7 +30,7 @@ void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
     int v_total_cells = params_.width * (params_.height + 1);
     int p_total_cells = params_.width * params_.height;
     
-    // Initialize u velocity component field (horizontal velocity)
+    // Initialize u velocity component field
     u_field_.resize(u_total_cells, 0.0f);
     u_temp_.resize(u_total_cells, 0.0f);
     
@@ -51,7 +50,7 @@ void FluidSimulator::InitializeFields(const std::vector<float>* initial_u_field,
     
     u_pair_ = new TexPair<std::vector<float> >(u_field_, u_temp_);
     
-    // Initialize v velocity component field (vertical velocity)
+    // Initialize v velocity component field
     v_field_.resize(v_total_cells, 0.0f);
     v_temp_.resize(v_total_cells, 0.0f);
     
@@ -146,7 +145,7 @@ void FluidSimulator::Step()
     
     // 5. Apply boundary conditions and inside source constraints
     ApplyBoundaryConditions();
-    // ApplyInsideSource();
+    ApplyInsideSource();
     
     // Save frame data
     SaveFrameData();
@@ -209,8 +208,8 @@ void FluidSimulator::SolvePressure()
 void FluidSimulator::AdvectVelocity()
 {
     advection_velocity<float>(params_.width, params_.height,
-                              u_pair_->cur, u_pair_->nxt,
-                              v_pair_->cur, v_pair_->nxt,
+                              u_pair_->cur, v_pair_->cur,
+                              u_pair_->nxt, v_pair_->nxt,
                               params_.dt);
     u_pair_->Swap();
     v_pair_->Swap();
@@ -354,7 +353,7 @@ void FluidSimulator::ApplyInsideSource()
             
             if (distance <= params_.source_radius)
             {
-                u_pair_->cur[IXY(i, j, params_.width + 1)] = 0.0f;  // No horizontal flow
+                u_pair_->cur[IXY(i, j, params_.width + 1)] = 0.0f;
             }
         }
     }

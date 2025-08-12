@@ -239,7 +239,6 @@ void backtrace_v(const int N, const int M, SCALAR x, SCALAR y, SCALAR dt,
 template <typename SCALAR>
 SCALAR interpolate_u(const int N, const int M, const std::vector<SCALAR> &u_vel, SCALAR x, SCALAR y)
 {
-    // u component is stored at (i, j+0.5), so y needs adjustment
     SCALAR adjusted_y = y - 0.5f;
     
     int ix = static_cast<int>(x);
@@ -267,7 +266,6 @@ SCALAR interpolate_u(const int N, const int M, const std::vector<SCALAR> &u_vel,
 template <typename SCALAR>
 SCALAR interpolate_v(const int N, const int M, const std::vector<SCALAR> &v_vel, SCALAR x, SCALAR y)
 {
-    // v component is stored at (i+0.5, j), so x needs adjustment
     SCALAR adjusted_x = x - 0.5f;
     
     int ix = static_cast<int>(adjusted_x);
@@ -602,7 +600,6 @@ template <typename SCALAR>
 void subtract_gradient(const int N, const int M, std::vector<SCALAR> &u_vel, 
                       std::vector<SCALAR> &v_vel, const std::vector<SCALAR> &pressure)
 {
-    // Update u component
     for (int i = 1; i < N; i++)
         for (int j = 0; j < M; j++)
         {
@@ -611,7 +608,6 @@ void subtract_gradient(const int N, const int M, std::vector<SCALAR> &u_vel,
             u_vel[IXY(i, j, N+1)] -= (p_right - p_left);
         }
     
-    // Update v component
     for (int i = 0; i < N; i++)
         for (int j = 1; j < M; j++)
         {

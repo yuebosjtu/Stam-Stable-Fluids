@@ -140,10 +140,39 @@ class FluidVisualizer:
         
         return None
     
+    def _calculate_global_range(self, field_type, frames_to_use=None):
+        """Calculate global min/max values across all frames for consistent color scaling"""
+        if frames_to_use is None:
+            frames_to_use = self.frames
+            
+        all_values = []
+        
+        for frame_num in frames_to_use:
+            if field_type == 'dye':
+                data = self.get_frame_data(frame_num, 'dye')
+            elif field_type == 'pressure':
+                data = self.get_frame_data(frame_num, 'pressure')
+            elif field_type == 'velocity':
+                vel_x, vel_y = self.get_frame_data(frame_num, 'velocity')
+                data = np.sqrt(vel_x**2 + vel_y**2) if vel_x is not None and vel_y is not None else None
+            else:
+                continue
+                
+            if data is not None:
+                all_values.extend(data.flatten())
+        
+        if all_values:
+            return np.min(all_values), np.max(all_values)
+        else:
+            return 0, 1  # Default range if no data
+    
     def plot_frame(self, frame_num, save_path=None):
         """Create a multi-panel plot for a specific frame"""
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         fig.suptitle(f'Fluid Simulation - Frame {frame_num}', fontsize=16)
+        
+        # Calculate global velocity range for consistent color scaling
+        vel_min, vel_max = self._calculate_global_range('velocity')
         
         # Dye concentration
         if self.dye_data:
@@ -165,12 +194,13 @@ class FluidVisualizer:
                 axes[0, 1].set_ylabel('Y')
                 plt.colorbar(im2, ax=axes[0, 1])
         
-        # Velocity magnitude
+        # Velocity magnitude with fixed color range
         if self.velocity_data:
             vel_x, vel_y = self.get_frame_data(frame_num, 'velocity')
             if vel_x is not None and vel_y is not None:
                 vel_mag = np.sqrt(vel_x**2 + vel_y**2)
-                im3 = axes[1, 0].imshow(vel_mag, cmap='viridis', origin='lower')
+                im3 = axes[1, 0].imshow(vel_mag, cmap='viridis', origin='lower', 
+                                       vmin=vel_min, vmax=vel_max)
                 axes[1, 0].set_title('Velocity Magnitude')
                 axes[1, 0].set_xlabel('X')
                 axes[1, 0].set_ylabel('Y')
@@ -212,6 +242,9 @@ class FluidVisualizer:
         
         fig, ax = plt.subplots(figsize=(8, 8))
         
+        # Calculate global min/max for consistent color scaling
+        global_min, global_max = self._calculate_global_range(field_type, frames_to_animate)
+        
         # Get data for first frame to set up plot
         if field_type == 'dye':
             first_data = self.get_frame_data(frames_to_animate[0], 'dye')
@@ -234,8 +267,9 @@ class FluidVisualizer:
             print(f"No data available for field type: {field_type}")
             return
         
-        # Set up the plot
-        im = ax.imshow(first_data, cmap=cmap, origin='lower', animated=True)
+        # Set up the plot with fixed color range
+        im = ax.imshow(first_data, cmap=cmap, origin='lower', animated=True, 
+                      vmin=global_min, vmax=global_max)
         ax.set_title(title)
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
@@ -261,7 +295,7 @@ class FluidVisualizer:
             
             if data is not None:
                 im.set_data(data)
-                im.set_clim(vmin=data.min(), vmax=data.max())
+                # Remove dynamic color scaling - use fixed range
                 frame_text.set_text(f'Frame: {frame_num}')
             
             return [im, frame_text]
