@@ -174,10 +174,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{AE35BB61-F858-3FCF-9B8F-7E6DA18847C3}</Project>
       <Name>main</Name>
     </ProjectReference>
-    <ProjectReference Include="D:\Lab_work\Fluid Simulation\Stam-Stable-Fluids\build\main_circular_source.vcxproj">
-      <Project>{4CA2E58F-B47C-3029-8A06-88DB07358005}</Project>
-      <Name>main_circular_source</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

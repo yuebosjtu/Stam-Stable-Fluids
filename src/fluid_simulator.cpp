@@ -111,7 +111,9 @@ void FluidSimulator::Initialize(const std::string& output_dir,
 {
     InitializeFields(initial_u_field, initial_v_field, initial_dye_field);
     
-    CreateOutputDirectory(output_dir);
+    // Create output directory
+    _mkdir(output_dir.c_str());
+    std::cout << "Output directory: " << output_dir << std::endl;
     
     // Open output files
     velocity_file_.open((output_dir + "/velocity_data.txt").c_str());
@@ -153,19 +155,18 @@ void FluidSimulator::Step()
     ApplyBoundaryConditions();
     ApplyInsideSource();
     
-    // Save frame data
-    SaveFrameData();
-    
     // Update time and frame
     current_time_ += params_.dt;
     current_frame_++;
     
     // Progress output
-    if (current_frame_ % 60 == 0) // Print every second (assuming 60 FPS)
+    if (current_frame_ % 10 == 0)
     {
-        std::cout << "Frame " << current_frame_ 
+        SaveFrameData();
+        std::cout << "Frame " << save_frame_ 
                   << ", Time: " << std::fixed << std::setprecision(2) << current_time_ 
                   << "s" << std::endl;
+        save_frame_++;
     }
 }
 
@@ -269,8 +270,7 @@ void FluidSimulator::AdvectVelocity()
 {
     advection_velocity<float>(params_.width, params_.height,
                               u_pair_->cur, v_pair_->cur,
-                              u_pair_->nxt, v_pair_->nxt,
-                              params_.dt);
+                              u_pair_->nxt, v_pair_->nxt, params_.dt);
     u_pair_->Swap();
     v_pair_->Swap();
 }
@@ -316,64 +316,25 @@ void FluidSimulator::SaveFrameData()
     {
         for (int i = 0; i < params_.width; ++i)
         {
-            int idx = IXY(i, j, params_.width);
+            int id = IXY(i, j, params_.width);
             
             // Save velocity data
             velocity_file_ << current_frame_ << " " << current_time_ << " " 
                           << i << " " << j << " " 
-                          << velocity_field[idx](0) << " " 
-                          << velocity_field[idx](1) << std::endl;
+                          << velocity_field[id](0) << " " 
+                          << velocity_field[id](1) << std::endl;
 
             // Save pressure data
             pressure_file_ << current_frame_ << " " << current_time_ << " " 
                           << i << " " << j << " " 
-                          << pressure_field[idx] << std::endl;
+                          << pressure_field[id] << std::endl;
 
             // Save dye data
             dye_file_ << current_frame_ << " " << current_time_ << " " 
                        << i << " " << j << " " 
-                       << dye_field[idx] << std::endl;
+                       << dye_field[id] << std::endl;
         }
     }
-}
-
-void FluidSimulator::CreateOutputDirectory(const std::string& dir)
-{
-    _mkdir(dir.c_str());
-    std::cout << "Output directory: " << dir << std::endl;
-}
-
-void FluidSimulator::CreateCircularSourceField(std::vector<float>& u_field, std::vector<float>& v_field) const
-{
-    int u_total_cells = (params_.width + 1) * params_.height;
-    int v_total_cells = params_.width * (params_.height + 1);
-    
-    u_field.resize(u_total_cells, 0.0f);
-    v_field.resize(v_total_cells, 0.0f);
-    
-    // Set v velocity in circular region (upward flow)
-    for (int i = 0; i < params_.width; ++i)
-    {
-        for (int j = 0; j < params_.height + 1; ++j)
-        {
-            // v component is stored at (i+0.5, j)
-            float x = static_cast<float>(i) + 0.5f;
-            float y = static_cast<float>(j);
-            
-            float dx = x - params_.source_center_x;
-            float dy = y - params_.source_center_y;
-            float distance = std::sqrt(dx*dx + dy*dy);
-            
-            if (distance <= params_.source_radius)
-            {
-                v_field[IXY(i, j, params_.width)] = params_.source_velocity;
-            }
-        }
-    }
-    
-    std::cout << "Created circular source field at (" << params_.source_center_x << ", " 
-              << params_.source_center_y << ") with radius " << params_.source_radius 
-              << " and velocity " << params_.source_velocity << std::endl;
 }
 
 void FluidSimulator::ApplyBoundaryConditions()

@@ -46,6 +46,7 @@ public:
 private:
     SimulationParams params_;
     float current_time_;
+    int save_frame_=0;
     int current_frame_;
     
     // Velocity components fields
@@ -158,6 +159,11 @@ public:
 
     const std::vector<float>& GetDyeField() const { return dye_field_; }
 
+    /**
+     * @brief Save current frame data to files
+     */
+    void SaveFrameData();
+
 private:
     /**
      * @brief Initialize all fields
@@ -218,16 +224,6 @@ private:
      * @brief Apply inside source conditions (constant velocity in circle)
      */
     void ApplyInsideSource();
-    
-    /**
-     * @brief Save current frame data to files
-     */
-    void SaveFrameData();
-    
-    /**
-     * @brief Create output directory if it doesn't exist
-     */
-    void CreateOutputDirectory(const std::string& dir);
 };
 
 #endif // FLUID_SIMULATOR_H

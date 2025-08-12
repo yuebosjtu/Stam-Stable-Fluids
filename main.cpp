@@ -1,66 +1,49 @@
 #include "fluid_simulator.h"
+#include "utils.h"
 #include <iostream>
-#include <chrono>
+#include <vector>
+#include <cmath>
 
 int main()
 {
-    std::cout << "=== Stam Stable Fluid Simulation ===" << std::endl;
-    
-    // Configure simulation parameters
+    // Create simulation parameters with circular source
     FluidSimulator::SimulationParams params;
     params.width = 128;
     params.height = 128;
-    params.dt = 0.016f;
-    params.total_time = 5.0f;             // 5 seconds simulation
-    params.viscosity = 0.0001f;
-    params.diffusion = 0.0005f;           // Diffusion Constant
-    params.dissipation = 0.001f;          // Dye dissipation rate
-    params.pressure_iterations = 30;
-    params.enable_gravity = true;
-    
+    params.dt = 0.1f;
+    params.total_time = 40.0f;
+    params.enable_gravity = false;  // Enable gravity to see pure source effect
+    params.pressure_iterations = 500;
+
+    // Configure circular source in lower part of domain
+    params.source_center_x = 64.0f;
+    params.source_center_y = 32.0f;
+    params.source_radius = 8.0f;       // 8 grid units radius
+    params.source_velocity = 5.0f;    // Upward velocity magnitude
+
     // Create fluid simulator
     FluidSimulator simulator(params);
     
-    // Initialize the simulation
-    simulator.Initialize("fluid_output");
-    
-    // Record start time for performance measurement
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    // Run the simulation
-    try 
-    {
-        simulator.RunSimulation();
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "Simulation error: " << e.what() << std::endl;
-        return -1;
-    }
-    
-    // Calculate and display performance statistics
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    
-    std::cout << "\n=== Simulation Statistics ===" << std::endl;
-    std::cout << "Grid size: " << params.width << " x " << params.height << std::endl;
-    std::cout << "Total frames: " << simulator.GetCurrentFrame() << std::endl;
-    std::cout << "Simulation time: " << simulator.GetCurrentTime() << " seconds" << std::endl;
-    std::cout << "Wall clock time: " << duration.count() << " ms" << std::endl;
-    std::cout << "Average FPS: " << (simulator.GetCurrentFrame() * 1000.0f) / duration.count() << std::endl;
-    
-    // Display information about output files
-    std::cout << "\n=== Output Files ===" << std::endl;
-    std::cout << "Velocity data: fluid_output/velocity_data.txt" << std::endl;
-    std::cout << "Pressure data: fluid_output/pressure_data.txt" << std::endl;
-    std::cout << "Dye data: fluid_output/dye_data.txt" << std::endl;
-    
-    std::cout << "\nData format:" << std::endl;
-    std::cout << "velocity_data.txt: frame time x y vel_x vel_y" << std::endl;
-    std::cout << "pressure_data.txt: frame time x y pressure" << std::endl;
-    std::cout << "dye_data.txt: frame time x y dye_concentration" << std::endl;
-    
-    std::cout << "Simulation completed successfully!" << std::endl;
+    // Create initial velocity field with circular source
+    std::vector<float> initial_u_field, initial_v_field;
+    CreateCircularSourceField(params.width, params.height,
+        params.source_center_x, params.source_center_y,
+        params.source_radius, params.source_velocity,
+        initial_u_field, initial_v_field);
+
+    // Initialize simulation with custom fields
+    simulator.Initialize("fluid_output", &initial_u_field, &initial_v_field, nullptr);
+
+    // Run simulation
+    simulator.RunSimulation();
+
+    std::cout << "\n=== Simulation completed! ===" << std::endl;
+    std::cout << "The simulation shows:" << std::endl;
+    std::cout << "- A circular source at (" << params.source_center_x << ", " << params.source_center_y << ")" << std::endl;
+    std::cout << "- Source radius: " << params.source_radius << " grid units" << std::endl;
+    std::cout << "- Source velocity: " << params.source_velocity << " units/s upward" << std::endl;
+    std::cout << "- No-slip boundary conditions on all walls" << std::endl;
+    std::cout << "- Constant velocity maintained inside the source region" << std::endl;
     
     return 0;
 }

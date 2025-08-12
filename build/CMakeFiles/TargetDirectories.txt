@@ -1,5 +1,3 @@
-D:/Lab_work/Fluid Simulation/Stam-Stable-Fluids/build/CMakeFiles/main_circular_source.dir
 D:/Lab_work/Fluid Simulation/Stam-Stable-Fluids/build/CMakeFiles/main.dir
-D:/Lab_work/Fluid Simulation/Stam-Stable-Fluids/build/CMakeFiles/run_circular_source.dir
 D:/Lab_work/Fluid Simulation/Stam-Stable-Fluids/build/CMakeFiles/ALL_BUILD.dir
 D:/Lab_work/Fluid Simulation/Stam-Stable-Fluids/build/CMakeFiles/ZERO_CHECK.dir
