@@ -497,6 +497,42 @@ void advection_velocity(const int N, const int M,
 }
 
 /**
+ * @brief Velocity advection for MAC grid(using MacCormack method)
+ * @param N width
+ * @param M height
+ * @param u_vel current u component field
+ * @param v_vel current v component field
+ * @param new_u_vel new u component field after advection
+ * @param new_v_vel new v component field after advection
+ * @param dt time step
+ */
+template <typename SCALAR>
+void macCormackVelocity(const int N, const int M,
+                       const std::vector<SCALAR> &u_vel, const std::vector<SCALAR> &v_vel,
+                       std::vector<SCALAR> &new_u_vel, std::vector<SCALAR> &new_v_vel,
+                       SCALAR dt)
+{
+    // Step 1: Predictor (forward)
+    std::vector<SCALAR> u_pred(u_vel.size());
+    std::vector<SCALAR> v_pred(v_vel.size());
+    advection_velocity(N, M, u_vel, v_vel, u_pred, v_pred, dt);
+
+    // Step 2: Corrector (backward)
+    std::vector<SCALAR> u_corr(u_vel.size());
+    std::vector<SCALAR> v_corr(v_vel.size());
+    advection_velocity(N, M, u_pred, v_pred, u_corr, v_corr, -dt);
+
+    // Step 3: Combine (second order)
+    for (size_t i = 0; i < u_vel.size(); ++i) {
+        new_u_vel[i] = u_pred[i] + 0.5f * (u_vel[i] - u_corr[i]);
+    }
+    for (size_t i = 0; i < v_vel.size(); ++i) {
+        new_v_vel[i] = v_pred[i] + 0.5f * (v_vel[i] - v_corr[i]);
+    }
+}
+
+
+/**
  * @brief apply global forces
  * @param vel velocity field
  * @param g scale of gravity(-9.8f as default)

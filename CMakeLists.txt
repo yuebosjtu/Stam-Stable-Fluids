@@ -10,11 +10,13 @@ set(EIGEN3_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Include directories
 include_directories(include)
+include_directories(visualize)
 
 # Add main executable
 add_executable(main 
     main.cpp
     src/fluid_simulator.cpp
+    visualize/colorramp.cpp
 )
 
 # Set output directory to the source directory (same as main.cpp)

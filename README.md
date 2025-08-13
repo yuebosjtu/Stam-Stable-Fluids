@@ -56,3 +56,15 @@ python visualize.py --mode animation --field dye --save "dye_animation.gif" --fp
 # Limit animation frames (improve performance)
 python visualize.py --mode animation --field velocity --max-frames 100
 ```
+
+## Generate Video by python scripts
+
+Ensure that the following Python packages are installed:
+
+```bash
+pip install opencv-python natsort
+```
+
+```bash
+python generate_video.py --input velocity_field --output velocity.mp4 --fps 15 --ext ppm
+```

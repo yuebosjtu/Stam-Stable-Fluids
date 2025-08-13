@@ -1,0 +1,110 @@
+inline void mrSolver3D::mlVisSmokeSlice_XY(long upw, long uph, int scaleNum, int frame, int posZ, int num_n)
+{
+	int upnum = 0;
+	int baseScale = 0;
+	REAL* cutslice_smoke = new REAL[lbmvec[0]->param->samples_smoke.x * lbmvec[0]->param->samples_smoke.y];
+	REAL* cutslice_tem = new REAL[lbmvec[0]->param->samples_smoke.x * lbmvec[0]->param->samples_smoke.y];
+	int z = 0.5 * lbmvec[0]->param->samples_smoke.z; //8;
+
+	for (int i = 0; i < scaleNum; i++)
+	{
+		int stx = 0;
+		int sty = 0;
+		int stz = 0;
+		int edx = 0;
+		int edy = 0;
+		int edz = 0;
+		stx = 0;
+		sty = 0;
+		stz = 0;
+		edx = lbmvec[i]->param->samples_smoke.x;
+		edy = lbmvec[i]->param->samples_smoke.y;
+		edz = lbmvec[i]->param->samples_smoke.z;
+		for (int y = sty; y < edy; y++)
+			for (int x = stx; x < edx; x++)
+			{
+				int num = y * lbmvec[i]->param->samples_smoke.x + x;
+				uint64_t curind = (uint64_t)z * lbmvec[i]->param->samples_smoke.y * lbmvec[i]->param->samples_smoke.x
+					+ (uint64_t)y * lbmvec[i]->param->samples_smoke.x + (uint64_t)x;
+				cutslice_smoke[num] = lbmvec[i]->smoke0[curind];
+				cutslice_tem[num] = lbmvec[i]->temperature0[curind];
+			}
+	}
+	REAL* vertices = new REAL[upw * uph * 3];
+	int num = 0;
+	ColorRamp color_m;
+	for (int j = uph - 1; j >= 0; j--)
+	{
+		for (int i = 0; i < upw; i++)
+		{
+			int ind1 = i + j * lbmvec[0]->param->samples_smoke.x;
+			double vv = cutslice_smoke[ind1];
+			vv = vv / 1.2;
+			vec3 color(0, 0, 0);
+			color_m.set_GLcolor(vv, COLOR__MAGMA, color, false);
+			vertices[num++] = color.x;
+			vertices[num++] = color.y;
+			vertices[num++] = color.z;
+		}
+	}
+
+
+	char filename[2048];
+	sprintf(filename, "E:/2DTo3D/smoke%05d/ppm_smoke/im%05d.ppm", num_n, frame);
+
+	std::filesystem::path filePath(filename);
+	std::filesystem::path directory = filePath.parent_path();
+
+	if (!directory.empty() && !std::filesystem::exists(directory)) {
+		std::filesystem::create_directories(directory);
+	}
+	//sprintf(filename, "../dataMR3D/ppm_smoke/pos%05d/im%05d.ppm", num_n, frame);
+	mlSavePPM(filename, vertices, upw, uph);
+
+
+	num = 0;
+	for (int j = uph - 1; j >= 0; j--)
+	{
+		for (int i = 0; i < upw; i++)
+		{
+			int ind1 = i + j * lbmvec[0]->param->samples_smoke.x;
+			double vv = cutslice_tem[ind1];
+			vv = vv / 1.2;
+			vec3 color(0, 0, 0);
+			color_m.set_GLcolor(vv, COLOR__MAGMA, color, false);
+			vertices[num++] = color.x;
+			vertices[num++] = color.y;
+			vertices[num++] = color.z;
+		}
+	}
+
+	//sprintf(filename, "../dataMR3D/ppm_tem/pos%05d/im%05d.ppm", num_n, frame);
+	sprintf(filename, "E:/2DTo3D/Tem%05d/ppm_tem/im%05d.ppm", num_n, frame);
+	std::filesystem::path filePath1(filename);
+	std::filesystem::path directory1 = filePath1.parent_path();
+	if (!directory1.empty() && !std::filesystem::exists(directory1)) {
+		std::filesystem::create_directories(directory1);
+	}
+	mlSavePPM(filename, vertices, upw, uph);
+	delete[] cutslice_smoke;
+	delete[] cutslice_tem;
+}
+
+inline void mrSolver3D::mlSavePPM(const char* filename, REAL* data, int mWidth, int mHeight)
+{
+
+	std::filesystem::path filePath(filename);
+	std::filesystem::path directory = filePath.parent_path();
+
+
+	if (!directory.empty() && !std::filesystem::exists(directory)) {
+		std::filesystem::create_directories(directory);
+	}
+
+	std::ofstream ofs(filename, std::ios::out | std::ios::binary);
+	ofs << "P6\n" << mWidth << " " << mHeight << "\n255\n";
+	for (unsigned i = 0; i < mWidth * mHeight * 3; ++i) {
+		ofs << (unsigned char)(data[i] * 255);
+	}
+	ofs.close();
+}

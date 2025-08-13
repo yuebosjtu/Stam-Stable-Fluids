@@ -15,6 +15,11 @@
 class FluidSimulator
 {
 public:
+    enum class AdvectMethod {
+            SemiLagrange = 0,
+            MacCormack = 1
+        };
+
     typedef Eigen::Vector2f Vector2f;
     typedef Eigen::VectorXf VectorXf;
     
@@ -35,13 +40,18 @@ public:
         float source_center_y;        // Circle center y coordinate
         float source_radius;          // Circle radius
         float source_velocity;        // Velocity magnitude inside circle
+
+        // Advect method to use
+        AdvectMethod advect_method_ = AdvectMethod::SemiLagrange;
         
         // Constructor with default values
         SimulationParams() : 
             width(64), height(64), dt(0.016f), viscosity(0.0001f), diffusion(0.0001f),
             dissipation(0.001f), pressure_iterations(80), total_time(10.0f), enable_gravity(true),
-            source_center_x(32.0f), source_center_y(16.0f), source_radius(8.0f), source_velocity(5.0f) {}
+            source_center_x(32.0f), source_center_y(16.0f), source_radius(8.0f), source_velocity(5.0f),
+            advect_method_(AdvectMethod::SemiLagrange) {}
     };
+    
 
 private:
     SimulationParams params_;
@@ -163,7 +173,7 @@ public:
     /**
      * @brief Save current frame data to files
      */
-    void SaveFrameData(img_dir = "image_file");
+    void SaveFrameData(const std::string& image_dir = "image_file");
 
 private:
     /**
@@ -189,7 +199,7 @@ private:
     /**
      * @brief Advect velocity field
      */
-    void AdvectVelocity();
+    void AdvectVelocity(AdvectMethod method);
     
     /**
      * @brief Solve for pressure to make velocity field divergence-free
@@ -225,6 +235,11 @@ private:
      * @brief Apply inside source conditions (constant velocity in circle)
      */
     void ApplyInsideSource();
+    
+    /**
+     * @brief Save velocity field as color-mapped image
+     */
+    void SaveVelocityFieldImage(const std::string& image_dir, const std::vector<Vector2f>& velocity_field, int current_frame);
 };
 
 #endif // FLUID_SIMULATOR_H

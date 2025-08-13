@@ -1,7 +1,9 @@
 #include "fluid_simulator.h"
+#include "../visualize/colorramp.h"
 #include <iostream>
 #include <iomanip>
 #include <cmath>
+#include <fstream>
 #include <direct.h>  // For _mkdir on Windows
 
 FluidSimulator::FluidSimulator(const SimulationParams& params)
@@ -134,13 +136,13 @@ void FluidSimulator::Initialize(const std::string& output_dir,
     std::cout << "Output directory: " << output_dir << std::endl;
 }
 
-void FluidSimulator::Step(const std::string& image_dir = "image_file")
+void FluidSimulator::Step(const std::string& image_dir)
 {
     // 1. Apply external forces (gravity, user input, etc.)
     ApplyForces();
     
     // 2. Advect velocity field
-    AdvectVelocity();
+    AdvectVelocity(params_.advect_method_);
     
     // 3. TODO: Diffuse velocity field (viscosity)
     
@@ -173,7 +175,7 @@ void FluidSimulator::Step(const std::string& image_dir = "image_file")
     }
 }
 
-void FluidSimulator::RunSimulation(const std::string& image_dir = "image_file")
+void FluidSimulator::RunSimulation(const std::string& image_dir)
 {
     std::cout << "Starting fluid simulation..." << std::endl;
     
@@ -269,11 +271,23 @@ void FluidSimulator::SolvePressure()
     subtract_gradient<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur, pressure_pair_->cur);
 }
 
-void FluidSimulator::AdvectVelocity()
+void FluidSimulator::AdvectVelocity(AdvectMethod method)
 {
-    advection_velocity<float>(params_.width, params_.height,
-                              u_pair_->cur, v_pair_->cur,
-                              u_pair_->nxt, v_pair_->nxt, params_.dt);
+    switch (method) {
+        case AdvectMethod::SemiLagrange:
+            advection_velocity<float>(params_.width, params_.height,
+                                      u_pair_->cur, v_pair_->cur,
+                                      u_pair_->nxt, v_pair_->nxt, params_.dt);
+            break;
+        case AdvectMethod::MacCormack:
+            macCormackVelocity<float>(params_.width, params_.height,
+                                      u_pair_->cur, v_pair_->cur,
+                                      u_pair_->nxt, v_pair_->nxt, params_.dt);
+            break;
+        default:
+            std::cerr << "Unknown advection method!" << std::endl;
+            break;
+    }
     u_pair_->Swap();
     v_pair_->Swap();
 }
@@ -307,7 +321,7 @@ void FluidSimulator::DissipateDye()
     dissipate<float>(params_.width, params_.height, dye_pair_->cur, params_.dissipation, params_.dt);
 }
 
-void FluidSimulator::SaveFrameData(const std::string& image_dir = "image_file")
+void FluidSimulator::SaveFrameData(const std::string& image_dir)
 {
     if (!velocity_file_.is_open() || !pressure_file_.is_open() || !dye_file_.is_open())
         return;
@@ -338,6 +352,9 @@ void FluidSimulator::SaveFrameData(const std::string& image_dir = "image_file")
                        << dye_field[id] << std::endl;
         }
     }
+    
+    // Save velocity field as color-mapped image
+    SaveVelocityFieldImage(image_dir, velocity_field, current_frame_);
 }
 
 void FluidSimulator::ApplyBoundaryConditions()
@@ -399,5 +416,74 @@ void FluidSimulator::ApplyInsideSource()
                 v_pair_->cur[IXY(i, j, params_.width)] = params_.source_velocity;
             }
         }
+    }
+}
+
+void FluidSimulator::SaveVelocityFieldImage(const std::string& image_dir, const std::vector<Vector2f>& velocity_field, int current_frame)
+{
+    // Create RGB data array for velocity magnitude visualization
+    std::vector<float> rgb_data(params_.width * params_.height * 3);
+    
+    // Initialize color ramp for velocity magnitude mapping
+    Mfree::ColorRamp color_ramp;
+    
+    // Find maximum velocity magnitude for normalization
+    float max_velocity = 0.0f;
+    for (int j = 0; j < params_.height; ++j)
+    {
+        for (int i = 0; i < params_.width; ++i)
+        {
+            int id = IXY(i, j, params_.width);
+            float magnitude = std::sqrt(velocity_field[id](0) * velocity_field[id](0) + 
+                                       velocity_field[id](1) * velocity_field[id](1));
+            max_velocity = std::max(max_velocity, magnitude);
+        }
+    }
+    
+    // Avoid division by zero
+    if (max_velocity < 1e-6f) max_velocity = 1.0f;
+    
+    // Generate color-mapped image data
+    for (int j = 0; j < params_.height; ++j)
+    {
+        for (int i = 0; i < params_.width; ++i)
+        {
+            int id = IXY(i, j, params_.width);
+            int rgb_id = ((params_.height - 1 - j) * params_.width + i) * 3; // Flip Y for image output
+            
+            // Calculate velocity magnitude
+            float magnitude = std::sqrt(velocity_field[id](0) * velocity_field[id](0) + 
+                                       velocity_field[id](1) * velocity_field[id](1));
+            
+            // Normalize velocity magnitude to [0, 1]
+            float normalized_velocity = magnitude / max_velocity;
+            
+            // Get color from color ramp using JET colormap
+            Mfree::vec3 color(0.0f, 0.0f, 0.0f);
+            color_ramp.set_GLcolor(normalized_velocity, Mfree::COLOR_JET, color, false);
+            
+            // Store RGB values
+            rgb_data[rgb_id] = color.x;
+            rgb_data[rgb_id + 1] = color.y;
+            rgb_data[rgb_id + 2] = color.z;
+        }
+    }
+    
+    // Save as PPM image with frame number in filename
+    char filename[512];
+    sprintf(filename, "%s/velocity_magnitude_frame_%05d.ppm", image_dir.c_str(), current_frame);
+    
+    std::ofstream ppm_file(filename, std::ios::out | std::ios::binary);
+    if (ppm_file.is_open())
+    {
+        ppm_file << "P6\n" << params_.width << " " << params_.height << "\n255\n";
+        for (int i = 0; i < params_.width * params_.height * 3; ++i) {
+            ppm_file << (unsigned char)(rgb_data[i] * 255);
+        }
+        ppm_file.close();
+    }
+    else
+    {
+        std::cerr << "Error: Could not create velocity image file: " << filename << std::endl;
     }
 }
