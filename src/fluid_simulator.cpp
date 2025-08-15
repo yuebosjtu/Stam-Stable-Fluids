@@ -144,7 +144,8 @@ void FluidSimulator::Step(const std::string& image_dir)
     // 2. Advect velocity field
     AdvectVelocity(params_.advect_method_);
     
-    // 3. TODO: Diffuse velocity field (viscosity)
+    // 3. Diffuse velocity field (viscosity)
+    DiffuseVelocity();
     
     // 4. Project - Solve pressure to ensure incompressibility
     SolvePressure();
@@ -292,6 +293,15 @@ void FluidSimulator::AdvectVelocity(AdvectMethod method)
     v_pair_->Swap();
 }
 
+void FluidSimulator::DiffuseVelocity()
+{
+    diffusion_velocity<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur,
+                              u_pair_->nxt, v_pair_->nxt, params_.viscosity, params_.dt);
+    
+    u_pair_->Swap();
+    v_pair_->Swap();
+}
+
 void FluidSimulator::AdvectDye()
 {
     advection_dye<float>(params_.width, params_.height, u_pair_->cur, v_pair_->cur,
@@ -299,21 +309,21 @@ void FluidSimulator::AdvectDye()
     dye_pair_->Swap();
 }
 
-// void FluidSimulator::DiffuseDye()
-// {
-//     if (params_.diffusion <= 0.0f) return;
+void FluidSimulator::DiffuseDye()
+{
+    if (params_.diffusion <= 0.0f) return;
     
-//     // Copy current dye to temp for diffusion source
-//     dye_temp_ = dye_pair_->cur;
+    // Copy current dye to temp for diffusion source
+    dye_temp_ = dye_pair_->cur;
     
-//     // Perform Gauss-Seidel iterations for dye diffusion
-//     for (int iter = 0; iter < params_.pressure_iterations; ++iter)
-//     {
-//         diffuse_gauss_seidel<float, float>(params_.width, params_.height, 
-//                                           params_.diffusion, params_.dt,
-//                                           dye_temp_, dye_pair_->cur);
-//     }
-// }
+    // Perform Gauss-Seidel iterations for dye diffusion
+    for (int iter = 0; iter < params_.pressure_iterations; ++iter)
+    {
+        diffuse_gauss_seidel<float, float>(params_.width, params_.height, 
+                                          params_.diffusion, params_.dt,
+                                          dye_temp_, dye_pair_->cur);
+    }
+}
 
 void FluidSimulator::DissipateDye()
 {

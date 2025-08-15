@@ -47,12 +47,11 @@ public:
         // Constructor with default values
         SimulationParams() : 
             width(64), height(64), dt(0.016f), viscosity(0.0001f), diffusion(0.0001f),
-            dissipation(0.001f), pressure_iterations(80), total_time(10.0f), enable_gravity(true),
+            dissipation(0.001f), pressure_iterations(500), total_time(10.0f), enable_gravity(false),
             source_center_x(32.0f), source_center_y(16.0f), source_radius(8.0f), source_velocity(5.0f),
             advect_method_(AdvectMethod::SemiLagrange) {}
     };
     
-
 private:
     SimulationParams params_;
     float current_time_;
@@ -214,12 +213,12 @@ private:
     /**
      * @brief Diffuse velocity field
      */
-    // void DiffuseVelocity();
+    void DiffuseVelocity();
 
     /**
      * @brief Diffuse dye field
      */
-    // void DiffuseDye();
+    void DiffuseDye();
     
     /**
      * @brief Dissipate (decay) dye field

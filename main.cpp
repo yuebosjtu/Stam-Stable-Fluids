@@ -11,13 +11,13 @@ int main()
     params.width = 256;
     params.height = 512;
     params.dt = 0.1f;
-    params.total_time = 60.0f;
+    params.total_time = 150.0f;
     params.enable_gravity = false;  // Enable gravity to see pure source effect
     params.pressure_iterations = 800;
 
     // Configure circular source in lower part of domain
-    params.source_center_x = 128.0f;
-    params.source_center_y = 64.0f;
+    params.source_center_x = 128.0f;  // Center X position of the source
+    params.source_center_y = 64.0f;    // Center Y position of the source
     params.source_radius = 16.0f;       // 16 grid units radius
     params.source_velocity = 5.0f;    // Upward velocity magnitude
 

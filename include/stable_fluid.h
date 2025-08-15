@@ -531,6 +531,57 @@ void macCormackVelocity(const int N, const int M,
     }
 }
 
+/*
+ * @brief Diffusion of velocity field for MAC grid
+ * @param u_vel current u component field
+ * @param v_vel current v component field
+ * @param new_u_vel new u component field after diffusion
+ * @param new_v_vel new v component field after diffusion
+ * @param nu kinematic viscosity
+ * @param dt time step
+ */
+template <typename SCALAR>
+void diffusion_velocity(const int N, const int M,
+                        const std::vector<SCALAR> &u_vel, const std::vector<SCALAR> &v_vel,
+                        std::vector<SCALAR> &new_u_vel, std::vector<SCALAR> &new_v_vel,
+                        SCALAR nu, SCALAR dt)
+{
+    // u^{t+1} = u^t + nu*dt*laplace(u^t)
+    float dx = 1.0f;
+    float coeff = nu * dt / (dx * dx);
+
+    // diffusion of u component
+    for (int j = 0; j < M; ++j) {
+        for (int i = 0; i < N + 1; ++i) {
+            // no-slip boundary conditions
+            if (i == 0 || i == N) continue;
+            int id = IXY(i, j, N + 1);
+            float u_center = u_vel[id];
+            float u_left   = u_vel[IXY(i - 1, j, N + 1)];
+            float u_right  = u_vel[IXY(i + 1, j, N + 1)];
+            float u_down   = (j > 0)     ? u_vel[IXY(i, j - 1, N + 1)] : u_center;
+            float u_up     = (j < M - 1) ? u_vel[IXY(i, j + 1, N + 1)] : u_center;
+            float lap = u_left + u_right + u_down + u_up - 4.0f * u_center;
+            new_u_vel[id] = u_center + coeff * lap;
+        }
+    }
+
+    // diffusion of v component
+    for (int j = 0; j < M + 1; ++j) {
+        for (int i = 0; i < N; ++i) {
+            // no-slip boundary conditions
+            if (j == 0 || j == M) continue;
+            int id = IXY(i, j, N);
+            float v_center = v_vel[id];
+            float v_left   = (i > 0)     ? v_vel[IXY(i - 1, j, N)] : v_center;
+            float v_right  = (i < N - 1) ? v_vel[IXY(i + 1, j, N)] : v_center;
+            float v_down   = v_vel[IXY(i, j - 1, N)];
+            float v_up     = v_vel[IXY(i, j + 1, N)];
+            float lap = v_left + v_right + v_down + v_up - 4.0f * v_center;
+            new_v_vel[id] = v_center + coeff * lap;
+        }
+    }
+}
 
 /**
  * @brief apply global forces
@@ -602,29 +653,6 @@ void diffuse_gauss_seidel(const int N, const int M, const SCALAR diffusion_rate,
 }
 
 /**
- * @brief Single iteration of gauss-sidel method
- * @param N width
- * @param M height
- * @param pressure pressure field
- * @param divergence divergence of velocity field
- */
-template <typename VEC, typename SCALAR = typename VEC::Scalar>
-void pressure_gauss_sidel(const int N, const int M, const std::vector<SCALAR> &divergence,
-                          const std::vector<SCALAR> &pressure, std::vector<SCALAR> &new_pressure)
-{
-    for (int i = 0; i < N; i++)
-        for (int j = 0; j < M; j++)
-        {
-            SCALAR pl = sample<SCALAR, SCALAR>(N, M, pressure, i - 1, j);
-            SCALAR pr = sample<SCALAR, SCALAR>(N, M, pressure, i + 1, j);
-            SCALAR pb = sample<SCALAR, SCALAR>(N, M, pressure, i, j - 1);
-            SCALAR pt = sample<SCALAR, SCALAR>(N, M, pressure, i, j + 1);
-            SCALAR diver = divergence[IXY(i, j, N)];
-            new_pressure.at(IXY(i, j, N)) = (pl + pr + pb + pt + (-1.f) * diver) * 0.25f;
-        }
-}
-
-/**
  * @brief Apply pressure gradient to velocity field for MAC grid
  * @param N width
  * @param M height
@@ -651,17 +679,6 @@ void subtract_gradient(const int N, const int M, std::vector<SCALAR> &u_vel,
             SCALAR p_bottom = pressure[IXY(i, j-1, N)];
             v_vel[IXY(i, j, N)] -= (p_top - p_bottom);
         }
-}
-
-template <typename SCALAR> SCALAR smooth_step(SCALAR a, SCALAR x)
-{
-    SCALAR y = (a - x) / a;
-    if (y < 0.0)
-        y = 0.0;
-    if (y > 1.0)
-        y = 1.0;
-    SCALAR rst = y * y;
-    return rst;
 }
 
 /**
